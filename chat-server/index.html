@@ -1,0 +1,294 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>Vector Messenger - Full Desktop</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --glass-bg: rgba(30, 41, 59, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --sidebar-bg: rgba(15, 23, 42, 0.7);
+        }
+
+        html, body {
+            width: 100vw; height: 100vh; margin: 0; padding: 0; overflow: hidden;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            background: var(--bg-gradient);
+        }
+
+        /* --- 1. 로그인 뷰 (초기 화면 정중앙) --- */
+        #login-view {
+            width: 100%; height: 100%;
+            display: flex; justify-content: center; align-items: center;
+            position: absolute; top: 0; left: 0; z-index: 100;
+        }
+
+        .login-card {
+            width: 100%; max-width: 420px; text-align: center; 
+            background: rgba(15, 23, 42, 0.7); backdrop-filter: blur(20px);
+            padding: 50px 40px; border-radius: 24px; border: 1px solid var(--glass-border);
+            box-shadow: 0 25px 50px rgba(0,0,0,0.5);
+            animation: fadeIn 0.8s ease-out;
+        }
+
+        .input-group { margin-bottom: 20px; text-align: left; }
+        .input-group label { display: block; font-size: 0.9rem; color: var(--text-muted); margin-bottom: 8px; margin-left: 5px; }
+        .login-card input {
+            width: 100%; padding: 16px 20px; border-radius: 12px; border: 1px solid var(--glass-border);
+            background: rgba(0,0,0,0.4); color: white; font-size: 1.05rem; outline: none; transition: 0.3s; box-sizing: border-box;
+        }
+        .login-card input:focus { border-color: var(--primary); background: rgba(0,0,0,0.6); }
+        .btn-primary {
+            width: 100%; padding: 16px; border-radius: 12px; border: none;
+            background: var(--primary); color: white; font-weight: 600; font-size: 1.1rem; cursor: pointer; transition: 0.3s; margin-top: 10px;
+        }
+        .btn-primary:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(99,102,241,0.3); }
+
+        /* --- 2. 메인 앱 뷰 (로그인 후 꽉 찬 화면) --- */
+        #app-view {
+            width: 100%; height: 100%; display: none; /* 초기엔 숨김 */
+            flex-direction: row;
+            background: var(--glass-bg); backdrop-filter: blur(16px);
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: translateY(0); } }
+
+        /* 사이드바 */
+        .sidebar {
+            width: 280px; background: var(--sidebar-bg);
+            border-right: 1px solid var(--glass-border);
+            display: flex; flex-direction: column; padding: 30px 24px;
+        }
+        .sidebar h2 { font-size: 1.4rem; color: white; margin: 0 0 20px 0; font-weight: 800; }
+        #sidebar-info {
+            background: rgba(0,0,0,0.3); padding: 20px; border-radius: 16px;
+            color: var(--text-muted); font-size: 0.95rem; line-height: 1.6; border: 1px solid rgba(255,255,255,0.05);
+        }
+
+        /* 채팅 메인 공간 */
+        .chat-content {
+            flex: 1; display: flex; flex-direction: column; position: relative; background: rgba(0,0,0,0.1);
+        }
+        
+        .chat-header {
+            padding: 24px 40px; border-bottom: 1px solid var(--glass-border);
+            background: rgba(15, 23, 42, 0.4); display: flex; align-items: center;
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 10;
+        }
+        .status-dot { width: 12px; height: 12px; background: #10b981; border-radius: 50%; margin-right: 15px; box-shadow: 0 0 10px #10b981; }
+        #header-title { margin: 0; font-size: 1.3rem; color: white; font-weight: bold; }
+
+        /* 메시지 영역 */
+        #messages {
+            flex: 1; list-style: none; padding: 40px; padding-bottom: 120px; margin: 0; 
+            overflow-y: auto; display: flex; flex-direction: column; gap: 20px;
+        }
+
+        .message-wrapper { max-width: 50%; padding: 16px 24px; border-radius: 20px; font-size: 1.05rem; line-height: 1.6; position: relative; }
+        .message-left { align-self: flex-start; background: rgba(255, 255, 255, 0.08); color: var(--text-main); border-top-left-radius: 6px; }
+        .message-right { align-self: flex-end; background: var(--primary); color: white; border-top-right-radius: 6px; box-shadow: 0 5px 15px rgba(99,102,241,0.2); }
+        
+        .user-meta { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; display: block; font-weight: 600; }
+        .chat-img { max-width: 350px; border-radius: 12px; margin-top: 10px; display: block; box-shadow: 0 4px 12px rgba(0,0,0,0.3); }
+
+        /* 삭제 버튼 */
+        .delete-btn {
+            position: absolute; top: -10px; right: -10px;
+            background: #ef4444; color: white; border: none; border-radius: 50%;
+            width: 26px; height: 26px; font-size: 12px; cursor: pointer;
+            display: none; align-items: center; justify-content: center; box-shadow: 0 4px 10px rgba(239,68,68,0.4);
+        }
+        .message-right:hover .delete-btn { display: flex; }
+
+        /* 하단 입력창 */
+        .input-area {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 100px;
+            background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border);
+            display: flex; padding: 0 40px; gap: 20px; align-items: center; box-sizing: border-box;
+        }
+        .input-area input[type="text"] {
+            flex: 1; border-radius: 16px; padding: 20px 25px; font-size: 1.1rem;
+            border: 1px solid rgba(255,255,255,0.1); background: rgba(0,0,0,0.3); color: white; outline: none; transition: 0.2s;
+        }
+        .input-area input[type="text"]:focus { border-color: var(--primary); background: rgba(0,0,0,0.5); }
+
+        .file-label { cursor: pointer; color: var(--text-muted); transition: 0.2s; padding: 10px; display: flex; align-items: center; }
+        .file-label:hover { color: white; transform: scale(1.1); }
+        .input-area button { 
+            width: 65px; height: 60px; border-radius: 16px; border: none; background: var(--primary); 
+            color: white; cursor: pointer; display: flex; align-items: center; justify-content: center; flex-shrink: 0; transition: 0.2s;
+        }
+        .input-area button:hover { background: var(--primary-hover); transform: translateY(-2px); box-shadow: 0 10px 20px rgba(99,102,241,0.3); }
+
+        #messages::-webkit-scrollbar { width: 8px; }
+        #messages::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 10px; }
+    </style>
+</head>
+<body>
+
+    <div id="login-view">
+        <div class="login-card">
+            <h1 style="color:white; margin-bottom:10px; font-size:2.2rem; font-weight:800;">Welcome</h1>
+            <p style="color:var(--text-muted); margin-bottom:40px;">리눅스 시스템 계정 인증</p>
+            <div class="input-group">
+                <label>Username</label>
+                <input id="username" type="text" placeholder="아이디 입력" onkeypress="handleKey(event, 'login')">
+            </div>
+            <div class="input-group" style="margin-bottom:30px;">
+                <label>Password</label>
+                <input id="password" type="password" placeholder="••••••••" onkeypress="handleKey(event, 'login')">
+            </div>
+            <button class="btn-primary" onclick="login()">통신망 접속</button>
+        </div>
+    </div>
+
+    <div id="app-view">
+        <div class="sidebar">
+            <h2>Vector Panel</h2>
+            <div id="sidebar-info">
+                </div>
+        </div>
+
+        <div class="chat-content">
+            <div class="chat-header">
+                <span class="status-dot"></span>
+                <h2 id="header-title">Channel Name</h2>
+            </div>
+            
+            <ul id="messages"></ul>
+            
+            <div class="input-area">
+                <input type="file" id="img-upload" accept="image/*" style="display: none;" onchange="uploadImage(event)">
+                <label for="img-upload" class="file-label" title="사진 업로드">
+                    <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"></path></svg>
+                </label>
+                <input id="m" type="text" autocomplete="off" placeholder="메시지를 입력하세요..." onkeypress="handleKey(event, 'chat')">
+                <button onclick="sendMsg()">
+                    <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let myInfo = { user: '', group: '' };
+
+        function login() {
+            const u = document.getElementById('username').value;
+            const p = document.getElementById('password').value;
+            if (!u || !p) return alert("정보를 입력해주세요.");
+            socket.emit('login', { username: u, password: p });
+            //여기까진 서버로 로그인 요청을 보내는 내용
+        }
+
+        socket.on('admin success', (data) => window.location.href = '/admin');
+
+        socket.on('login success', (data) => {
+            myInfo = data;
+            
+            // 핵심 로직: 로그인 뷰 숨기고 메인 뷰 보이기
+            document.getElementById('login-view').style.display = 'none';
+            document.getElementById('app-view').style.display = 'flex';
+            
+            document.getElementById('header-title').innerText = `# ${data.group.toUpperCase()} 채널`;
+            
+            // 사이드바에 유저 정보 예쁘게 업데이트
+            document.getElementById('sidebar-info').innerHTML = `
+                <div style="margin-bottom: 20px;">
+                    <span style="color:white; font-size:1.1rem; font-weight:bold;">👤 ${data.user}</span>
+                </div>
+                <div>
+                    <span style="display:inline-block; background:var(--primary); color:white; padding:6px 12px; border-radius:20px; font-size:0.85rem; font-weight:bold;">
+                        ${data.group.toUpperCase()} 권한
+                    </span>
+                </div>
+            `;
+            socket.emit('get history', data.group);
+            //여기까진 로그인 성공 시 DOM(화면) 전환 및 사이드바 업데이트 내용
+        });
+
+        socket.on('load history', (history) => {
+            const messages = document.getElementById('messages');
+            messages.innerHTML = '';
+            history.forEach(data => renderMessage(data));
+        });
+
+        socket.on('chat message', (data) => renderMessage(data));
+
+        socket.on('delete message', (msgId) => {
+            const el = document.getElementById(`msg-${msgId}`);
+            if (el) el.remove();
+        });
+
+        function renderMessage(data) {
+            const messages = document.getElementById('messages');
+            const item = document.createElement('li');
+            const isMine = data.user === myInfo.user;
+            const timeStr = new Date(data.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            const msgId = data.msgId || Date.now(); 
+            item.id = `msg-${msgId}`;
+            item.className = isMine ? 'message-wrapper message-right' : 'message-wrapper message-left';
+            
+            const delBtn = isMine ? `<button class="delete-btn" onclick="deleteMsg('${msgId}')">✕</button>` : '';
+            const meta = `<span class="user-meta">${isMine ? '' : '<strong style="color:white;">' + data.user + '</strong> • '}${timeStr}</span>`;
+            
+            const content = data.imgData ? `<img src="${data.imgData}" class="chat-img">` : data.msg;
+            
+            item.innerHTML = `${delBtn}${meta}${content}`;
+            messages.appendChild(item);
+            messages.scrollTop = messages.scrollHeight;
+            //여기까진 메시지 말풍선을 생성하고 화면 최하단으로 스크롤하는 내용
+        }
+
+        function sendMsg() {
+            const m = document.getElementById('m');
+            if (!m.value) return;
+            const msgId = Date.now().toString();
+            socket.emit('chat message', { group: myInfo.group, user: myInfo.user, msg: m.value, msgId: msgId });
+            m.value = '';
+            m.focus();
+        }
+
+        function uploadImage(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            if(file.size > 2 * 1024 * 1024) return alert('이미지 용량은 2MB를 넘을 수 없습니다.');
+
+            const reader = new FileReader();
+            reader.onload = function(e) {
+                const base64Image = e.target.result;
+                socket.emit('chat message', { 
+                    group: myInfo.group, 
+                    user: myInfo.user, 
+                    msg: '사진을 전송했습니다.', 
+                    imgData: base64Image,
+                    msgId: Date.now().toString() 
+                });
+            };
+            reader.readAsDataURL(file);
+            event.target.value = '';
+        }
+
+        function deleteMsg(msgId) {
+            if(confirm('메시지를 삭제하시겠습니까?')) {
+                socket.emit('delete message', { group: myInfo.group, msgId: msgId });
+            }
+        }
+
+        function handleKey(e, type) {
+            if (e.key === 'Enter') type === 'login' ? login() : sendMsg();
+        } //여기까진 엔터키 입력 처리 로직 내용
+    </script>
+</body>
+</html>

@@ -1,0 +1,239 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <title>Vector Admin - Full Desktop Pro</title>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <script src="/socket.io/socket.io.js"></script>
+    <style>
+        :root {
+            --primary: #6366f1;
+            --primary-hover: #4f46e5;
+            --bg-gradient: linear-gradient(135deg, #0f172a 0%, #1e1b4b 100%);
+            --glass-bg: rgba(30, 41, 59, 0.85);
+            --glass-border: rgba(255, 255, 255, 0.08);
+            --text-main: #f8fafc;
+            --text-muted: #94a3b8;
+            --sidebar-bg: rgba(15, 23, 42, 0.7);
+        }
+
+        html, body {
+            width: 100vw; height: 100vh; margin: 0; padding: 0; overflow: hidden;
+            font-family: 'Inter', -apple-system, system-ui, sans-serif;
+            background: var(--bg-gradient);
+            display: flex;
+        }
+
+        .chat-container {
+            width: 100%; height: 100%; max-width: 100%;
+            background: var(--glass-bg);
+            backdrop-filter: blur(16px);
+            border: none; border-radius: 0; box-shadow: none;
+            display: flex; flex-direction: row;
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+
+        .sidebar {
+            width: 300px; background: var(--sidebar-bg);
+            border-right: 1px solid var(--glass-border);
+            display: flex; flex-direction: column; padding: 30px 24px;
+        }
+        
+        .sidebar-header { margin-bottom: 40px; }
+        .sidebar-header h2 { font-size: 1.4rem; color: var(--text-main); margin: 0 0 8px 0; font-weight: 800; letter-spacing: -0.5px; }
+        .sidebar-header p { font-size: 0.9rem; color: #10b981; margin: 0; font-weight: 600; display: flex; align-items: center; gap: 6px; }
+        .status-dot { width: 10px; height: 10px; background: #10b981; border-radius: 50%; box-shadow: 0 0 10px #10b981; }
+
+        .room-btns { display: flex; flex-direction: column; gap: 12px; height: 100%; }
+        button.room-btn {
+            padding: 16px 20px; text-align: left; cursor: pointer; border: none; border-radius: 12px;
+            background: transparent; color: var(--text-muted); font-size: 1.05rem; font-weight: 600; transition: 0.2s;
+            display: flex; align-items: center; gap: 10px;
+        }
+        button.room-btn::before { content: '#'; color: #475569; font-weight: 800; font-size: 1.2rem; }
+        button.room-btn:hover { background: rgba(255,255,255,0.05); color: var(--text-main); }
+        button.room-btn.active { background: var(--primary); color: white; }
+        button.room-btn.active::before { color: rgba(255,255,255,0.6); }
+        
+        button.leave { background: rgba(239, 68, 68, 0.1); color: #ef4444; margin-top: auto; justify-content: center; }
+        button.leave::before { display: none; }
+        button.leave:hover { background: #ef4444; color: white; }
+
+        .chat-content {
+            flex: 1; display: flex; flex-direction: column; position: relative; background: rgba(0,0,0,0.1);
+        }
+
+        .chat-header {
+            padding: 24px 40px; background: rgba(15, 23, 42, 0.5);
+            border-bottom: 1px solid var(--glass-border);
+            font-size: 1.3rem; font-weight: bold; color: var(--text-main);
+            box-shadow: 0 4px 20px rgba(0,0,0,0.2); z-index: 10;
+        }
+
+        #messages {
+            flex: 1; list-style: none; padding: 40px; padding-bottom: 120px;
+            margin: 0; overflow-y: auto; display: flex; flex-direction: column; gap: 18px;
+        }
+
+        .message-wrapper { max-width: 50%; padding: 16px 24px; border-radius: 20px; font-size: 1.05rem; line-height: 1.6; position: relative; }
+        .message-left { align-self: flex-start; background: rgba(255, 255, 255, 0.08); color: var(--text-main); border-top-left-radius: 6px; }
+        
+        .msg-admin {
+            align-self: flex-end; background: rgba(30, 41, 59, 0.9); color: white;
+            padding: 18px 24px; border-radius: 20px; border-top-right-radius: 6px; 
+            border-right: 5px solid #ef4444; max-width: 50%; text-align: left;
+            box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+        }
+
+        .user-meta { font-size: 0.85rem; color: var(--text-muted); margin-bottom: 8px; display: block; font-weight: 600; }
+        .sys-msg { color: var(--text-muted); font-size: 0.95rem; text-align: center; margin: 20px 0; background: rgba(0,0,0,0.3); padding: 10px 20px; border-radius: 30px; align-self: center; font-weight: 500; }
+
+        .input-area {
+            position: absolute; bottom: 0; left: 0; width: 100%; height: 100px;
+            background: rgba(15, 23, 42, 0.8); backdrop-filter: blur(20px);
+            border-top: 1px solid var(--glass-border);
+            display: flex; padding: 0 40px; gap: 20px; align-items: center; box-sizing: border-box;
+        }
+        .input-area input {
+            flex: 1; border-radius: 16px; padding: 20px 25px; font-size: 1.1rem;
+            border: 1px solid rgba(255,255,255,0.1); background: rgba(0, 0, 0, 0.3); color: white; outline: none; transition: 0.2s;
+        }
+        .input-area input:focus { border-color: #ef4444; background: rgba(0,0,0,0.5); }
+        .input-area button {
+            padding: 0 40px; height: 60px; border-radius: 16px; border: none; background: #ef4444;
+            color: white; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: 0.2s;
+            display: flex; align-items: center; gap: 10px;
+        }
+        .input-area button:hover { background: #dc2626; transform: translateY(-2px); box-shadow: 0 10px 20px rgba(239,68,68,0.3); }
+
+        #messages::-webkit-scrollbar { width: 10px; }
+        #messages::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.15); border-radius: 10px; }
+    </style>
+</head>
+<body>
+    <div class="chat-container">
+        <div class="sidebar">
+            <div class="sidebar-header">
+                <h2>Vector Admin</h2>
+                <p><span class="status-dot"></span> <span id="admin-id"></span> (관리자)</p>
+            </div>
+            
+            <div class="room-btns">
+                <button class="room-btn" onclick="joinRoom('skt', this)">SKT Network</button>
+                <button class="room-btn" onclick="joinRoom('kt', this)">KT Network</button>
+                <button class="room-btn" onclick="joinRoom('lgt', this)">LGT Network</button>
+                <div style="flex:1;"></div>
+                <button class="room-btn leave" onclick="leaveCurrentRoom()">모니터링 종료</button>
+            </div>
+        </div>
+
+        <div class="chat-content">
+            <div class="chat-header" id="room-status" style="color:var(--text-muted);">
+                좌측에서 모니터링할 네트워크 채널을 선택해주세요
+            </div>
+            
+            <ul id="messages"></ul>
+
+            <div class="input-area" id="admin-input-area" style="display: none;">
+                <input id="m" autocomplete="off" placeholder="관리자 권한으로 시스템 공지 전송..." onkeypress="if(event.key==='Enter') sendAdminMsg()">
+                <button onclick="sendAdminMsg()">
+                    공지 발송
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const socket = io();
+        let currentRoom = null;
+        const adminId = localStorage.getItem('user') || 'ADMIN'; 
+        document.getElementById('admin-id').innerText = adminId;
+
+        function joinRoom(room, btnElement) {
+            if (currentRoom) leaveCurrentRoom(); 
+            currentRoom = room;
+            socket.emit('admin join', room);
+            document.getElementById('room-status').innerHTML = `<span style="color:#10b981;">●</span> # ${room.toUpperCase()} 실시간 모니터링 중`;
+            
+            document.querySelectorAll('.room-btn').forEach(b => b.classList.remove('active'));
+            if(btnElement) btnElement.classList.add('active');
+
+            document.getElementById('admin-input-area').style.display = 'flex';
+            document.getElementById('messages').innerHTML = ''; 
+            
+            // [핵심 수정] 객체가 아닌 문자열(currentRoom)로 서버에 요청!
+            socket.emit('get history', currentRoom); //여기까진 서버로 DB 내역을 요청하는 부분 수정
+        }
+
+        function leaveCurrentRoom() {
+            if (currentRoom) {
+                socket.emit('admin leave', currentRoom);
+                addLog(`시스템: [${currentRoom.toUpperCase()}] 채널 모니터링을 종료했습니다.`);
+                currentRoom = null;
+                document.getElementById('room-status').innerText = '좌측에서 모니터링할 네트워크 채널을 선택해주세요';
+                document.querySelectorAll('.room-btn').forEach(b => b.classList.remove('active'));
+                document.getElementById('admin-input-area').style.display = 'none';
+                document.getElementById('messages').innerHTML = '';
+            }
+        }
+
+        function sendAdminMsg() {
+            const inputEle = document.getElementById('m');
+            const msg = inputEle.value;
+            if (!msg || !currentRoom) return;
+            socket.emit('chat message', { group: currentRoom, user: `[관리자] ${adminId}`, msg: msg, msgId: Date.now().toString() });
+            inputEle.value = '';
+            inputEle.focus();
+        }
+
+        // [핵심 수정] 일반 유저와 똑같이 배열(history)을 받아서 처리
+        socket.on('load history', function(history) {
+            const messages = document.getElementById('messages');
+            messages.innerHTML = ''; // 초기화
+            
+            history.forEach(msg => {
+                renderSingleMessage(msg, false); 
+            });
+            messages.scrollTop = messages.scrollHeight; 
+        }); //여기까진 서버에서 받은 데이터를 화면에 일괄 출력하는 부분 수정
+
+        socket.on('chat message', (data) => {
+            renderSingleMessage(data, true); 
+        });
+
+        function renderSingleMessage(data, isRealTime) {
+            const messages = document.getElementById('messages');
+            const isAdminMsg = data.user.startsWith('[관리자]');
+            const timeStr = new Date(data.timestamp || Date.now()).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'});
+            
+            const content = data.imgData 
+                ? `<img src="${data.imgData}" style="max-width:400px; border-radius:12px; margin-top:10px; display:block; box-shadow:0 4px 10px rgba(0,0,0,0.3);">` 
+                : data.msg;
+            
+            let html = '';
+            if (isAdminMsg) {
+                html = `<li class="msg-admin" id="msg-${data.msgId}"><span class="user-meta" style="color:#fca5a5;">${data.user} • ${timeStr}</span>${content}</li>`;
+            } else {
+                html = `<li class="message-wrapper message-left" id="msg-${data.msgId}"><span class="user-meta">${data.user} • ${timeStr}</span>${content}</li>`;
+            }
+            
+            messages.insertAdjacentHTML('beforeend', html);
+            if(isRealTime) messages.scrollTop = messages.scrollHeight;
+        }
+
+        socket.on('delete message', (msgId) => {
+            const el = document.getElementById(`msg-${msgId}`);
+            if (el) el.remove();
+        });
+
+        function addLog(text) {
+            const messages = document.getElementById('messages');
+            messages.insertAdjacentHTML('beforeend', `<li class="sys-msg">${text}</li>`);
+            messages.scrollTop = messages.scrollHeight;
+        }
+    </script>
+</body>
+</html>

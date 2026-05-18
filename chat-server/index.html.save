@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Linux Group Chat</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script>
+        const socket = io();
+        let myInfo = { user: '', group: '' };
+
+        // 1. 로그인 (리눅스 아이디 입력)
+        function login() {
+        const username = document.getElementById('username').value;
+        const userpw = document.getElementById('password').value; // 비밀번호 가져오기
+        
+        if (!username || !userpw) return alert("아이디와 비밀번호를 모두 입력하세요!");
+
+        // 서버로 객체 형태 { username, password }로 보냄
+        socket.emit('login', { username: username, password: userpw });
+        //여기까진 아이디와 비밀번호를 묶어서 서버로 전송하는 내용
+    }
+
+        // 2. 로그인 성공 시 처리
+        socket.on('login success', function(data) {
+            myInfo = data;
+            document.getElementById('login-area').style.display = 'none';
+            document.getElementById('chat-area').style.display = 'block';
+            document.getElementById('status').innerText = 
+                `반갑습니다, ${data.user}님! [${data.group}] 그룹 채팅에 접속되었습니다.`;
+        });
+
+        // 3. 로그인 에러 처리
+        socket.on('login error', function(msg) {
+            alert(msg);
+        });
+
+        // 4. 메시지 전송
+        function sendMsg() {
+            const msg = document.getElementById('m').value;
+            if (!msg) return;
+            socket.emit('chat message', { 
+                group: myInfo.group, 
+                user: myInfo.user, 
+                msg: msg 
+            });
+            document.getElementById('m').value = '';
+        }
+
+        // 5. 메시지 수신 및 화면 출력
+        socket.on('chat message', function(data) {
+            const item = document.createElement('li');
+            item.textContent = `[${data.group}] ${data.user}: ${data.msg}`;
+            document.getElementById('messages').appendChild(item);
+        });
+    </script>
+</head>
+<body>
+    <h2>Linux Group Chat Service</h2>
+
+    <div id="login-area">
+        <input id="username" placeholder="Linux ID 입력 (예: yelena)">
+        <input id="password" type="password" placeholder="리눅스 비밀번호" /> <button onclick="login()">로그인</button>
+    </div>
+
+    <div id="chat-area" style="display:none;">
+        <p id="status" style="font-weight:bold; color:blue;"></p>
+        <ul id="messages" style="border:1px solid #ccc; height:300px; overflow-y:scroll;"></ul>
+        <input id="m" autocomplete="off" style="width:70%;">
+        <button onclick="sendMsg()">전송</button>
+    </div>
+</body>
+</html>
